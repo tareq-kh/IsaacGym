@@ -1,8 +1,9 @@
+from random import uniform
 
-from isaacgym import gymapi,gymutil,gymtorch
+from isaacgym import gymapi, gymutil, gymtorch
 import numpy as np
 import torch
-
+import roblearn.kobuki_controller as controller
 
 gym = gymapi.acquire_gym()
 
@@ -11,6 +12,9 @@ class AssetDesc:
     def __init__(self, file_name, flip_visual_attachments=False):
         self.file_name = file_name
         self.flip_visual_attachments = flip_visual_attachments
+
+
+
 
 
 asset_descriptors = [
@@ -47,7 +51,6 @@ sim_params.flex.num_outer_iterations = 4
 sim_params.flex.num_inner_iterations = 20
 sim_params.flex.relaxation = 0.8
 sim_params.flex.warm_start = 0.5
-
 
 # create sim with these parameters
 sim = gym.create_sim(args.compute_device_id, args.graphics_device_id, gymapi.SIM_PHYSX, sim_params)
@@ -87,10 +90,9 @@ num_bodies = gym.get_actor_rigid_body_count(env, actor_handle)
 num_joints = gym.get_actor_joint_count(env, actor_handle)
 num_dofs = gym.get_actor_dof_count(env, actor_handle)
 
-
-print("num_bodies: ",num_bodies)
-print("num_joints: ",num_joints)
-print("num_dofs: ",num_dofs)
+print("num_bodies: ", num_bodies)
+print("num_joints: ", num_joints)
+print("num_dofs: ", num_dofs)
 asset_options = gymapi.AssetOptions()
 asset_options.density = 10.0
 
@@ -98,11 +100,10 @@ box_asset = gym.create_box(sim, 1, 0.3, 1, asset_options)
 sphere_asset = gym.create_sphere(sim, 0.2, asset_options)
 capsule_asset = gym.create_capsule(sim, 0.2, 0.3, asset_options)
 
-actor_box = gym.create_actor(env, box_asset, pose1, "MyActor2", 0, 2)
+# actor_box = gym.create_actor(env, box_asset, pose1, "MyActor2", 0, 2)
 
 cam_props = gymapi.CameraProperties()
 viewer = gym.create_viewer(sim, cam_props)
-
 
 # configure the joints for effort control mode (once)
 props = gym.get_actor_dof_properties(env, actor_handle)
@@ -113,10 +114,10 @@ gym.set_actor_dof_properties(env, actor_handle, props)
 
 # apply efforts (every frame)
 vel_targets = np.random.uniform(3.14, 3.14, num_dofs).astype('f')
+print(vel_targets)
 gym.set_actor_dof_velocity_targets(env, actor_handle, vel_targets)
 
 gym.prepare_sim(sim)
-
 
 # acquire root state tensor descriptor
 _root_tensor = gym.acquire_actor_root_state_tensor(sim)
@@ -132,19 +133,30 @@ step = 0
 offsets = torch.tensor([0, 1, 0])
 root_positions += offsets
 
+speed_v_w = (0,3.0)
+
 while not gym.query_viewer_has_closed(viewer):
 
     # step the physics
     gym.simulate(sim)
 
     step += 1
+    if step % 100 == 0:
+        print((uniform(speed[0]/0.035, speed[0]/0.035), uniform(speed[1]/0.035, speed[1]/0.035)))
+        speed = controller.getSpeed(uniform((speed[0]/0.035)*1.1, (speed[0]/0.035)*0.9), uniform(speed[1]/0.035+5, speed[1]/0.035-5))
+        vel_targets = np.random.uniform(speed[0], speed[1], num_dofs).astype('f')
 
+        print("SPEED",speed)
+        print("VEL_TARGET",vel_targets)
+        print(speed[0], speed[1])
+
+        gym.set_actor_dof_velocity_targets(env, actor_handle, vel_targets)
     root_positions += offsets
-    print("reset")
+    # print("reset")
     gym.fetch_results(sim, True)
-    #print(root_linvels[0][0])
-    #print(root_angvels)
-    print(gym.get_sim_rigid_body_count(sim))
+    # print(root_linvels[0][0])
+    # print(root_angvels)
+    # print(gym.get_sim_rigid_body_count(sim))
     # update the viewer
     gym.step_graphics(sim)
     gym.draw_viewer(viewer, sim, True)
